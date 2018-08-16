@@ -237,10 +237,7 @@ public class Node {
                 try {
 
                     //Transaction bytes
-
-                    MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                    digest.update(receivedData, 0, TransactionViewModel.SIZE);
-                    ByteBuffer byteHash = ByteBuffer.wrap(digest.digest());
+                    ByteBuffer byteHash = ByteBuffer.wrap(Hash.Sha3Digest(receivedData));
 
                     //check if cached
                     synchronized (recentSeenBytes) {
@@ -249,7 +246,7 @@ public class Node {
 
                     if (!cached) {
                         //if not, then validate
-                        receivedTransactionViewModel = new TransactionViewModel(receivedData, Hash.calculate(receivedData, TransactionViewModel.TRINARY_SIZE, SpongeFactory.create(SpongeFactory.Mode.CURLP81)));
+                        receivedTransactionViewModel = new TransactionViewModel(receivedData, new Hash(byteHash.array()));
                         receivedTransactionHash = receivedTransactionViewModel.getHash();
                         TransactionValidator.runValidation(receivedTransactionViewModel, transactionValidator.getMinWeightMagnitude());
 
@@ -262,8 +259,6 @@ public class Node {
 
                     }
 
-                } catch (NoSuchAlgorithmException e) {
-                    log.error("MessageDigest: " + e);
                 } catch (final TransactionValidator.StaleTimestampException e) {
                     log.debug(e.getMessage());
                     try {
@@ -282,7 +277,7 @@ public class Node {
                 //Request bytes
 
                 //add request to reply queue (requestedHash, neighbor)
-                Hash requestedHash = new Hash(receivedData, TransactionViewModel.SIZE, TransactionRequester.REQUEST_HASH_SIZE);
+                Hash requestedHash = new Hash(receivedData);
                 if (requestedHash.equals(receivedTransactionHash)) {
                     //requesting a random tip
                     requestedHash = Hash.NULL_HASH;
@@ -477,10 +472,11 @@ public class Node {
         }
 
         synchronized (sendingPacket) {
-            System.arraycopy(transactionViewModel.getBytes(), 0, sendingPacket.getData(), 0, TransactionViewModel.SIZE);
+            byte[] bytes = transactionViewModel.getBytes();
+            System.arraycopy(bytes, 0, sendingPacket.getData(), 0, bytes.length);
             Hash hash = transactionRequester.transactionToRequest(rnd.nextDouble() < P_SELECT_MILESTONE);
             System.arraycopy(hash != null ? hash.bytes() : transactionViewModel.getHash().bytes(), 0,
-                    sendingPacket.getData(), TransactionViewModel.SIZE, REQUEST_HASH_SIZE);
+                    sendingPacket.getData(), bytes.length, REQUEST_HASH_SIZE);
             neighbor.send(sendingPacket);
         }
 
@@ -524,9 +520,10 @@ public class Node {
 
                 try {
                     final TransactionViewModel transactionViewModel = TransactionViewModel.fromHash(tangle, milestone.latestMilestone);
-                    System.arraycopy(transactionViewModel.getBytes(), 0, tipRequestingPacket.getData(), 0, TransactionViewModel.SIZE);
-                    System.arraycopy(transactionViewModel.getHash().bytes(), 0, tipRequestingPacket.getData(), TransactionViewModel.SIZE,
-                            TransactionRequester.REQUEST_HASH_SIZE);
+                    byte[] bytes = transactionViewModel.getBytes();
+                    System.arraycopy(bytes, 0, tipRequestingPacket.getData(), 0, bytes.length);
+                    System.arraycopy(transactionViewModel.getHash().bytes(), 0, tipRequestingPacket.getData(), bytes.length,
+                            Hash.SIZE_IN_BYTES);
                     //Hash.SIZE_IN_BYTES);
 
                     neighbors.forEach(n -> n.send(tipRequestingPacket));

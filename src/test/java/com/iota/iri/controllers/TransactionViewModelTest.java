@@ -411,6 +411,8 @@ public class TransactionViewModelTest {
         return Arrays.stream(new int[TransactionViewModel.TRINARY_SIZE]).map(i -> seed.nextInt(3)-1).toArray();
     }
     public static Hash getRandomTransactionHash() {
-        return new Hash(Arrays.stream(new int[Hash.SIZE_IN_TRITS]).map(i -> seed.nextInt(3)-1).toArray());
+        byte[] bytes = new byte[Hash.SIZE_IN_BYTES];
+        seed.nextBytes(bytes);
+        return new Hash(bytes);
     }
 }

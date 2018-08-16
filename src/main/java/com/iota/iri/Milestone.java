@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -196,14 +197,16 @@ public class Milestone {
                             && transactionViewModel.getBundleHash().equals(transactionViewModel2.getBundleHash())) {
 
                         final int[] trunkTransactionTrits = transactionViewModel.getTrunkTransactionHash().trits();
-                        final int[] signatureFragmentTrits = Arrays.copyOfRange(transactionViewModel.trits(), TransactionViewModel.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET, TransactionViewModel.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET + TransactionViewModel.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_SIZE);
+                        // TODO: Update the milestone merkle validation
+//                        final int[] signatureFragmentTrits = Arrays.copyOfRange(transactionViewModel.trits(), TransactionViewModel.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET, TransactionViewModel.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_OFFSET + TransactionViewModel.SIGNATURE_MESSAGE_FRAGMENT_TRINARY_SIZE);
+//                        final int[] merkleRoot = ISS.getMerkleRoot(mode, ISS.address(mode, ISS.digest(mode,
+//                                Arrays.copyOf(ISS.normalizedBundle(trunkTransactionTrits),
+//                                        ISS.NUMBER_OF_FRAGMENT_CHUNKS),
+//                                signatureFragmentTrits)),
+//                                transactionViewModel2.trits(), 0, index, NUMBER_OF_KEYS_IN_A_MILESTONE);
 
-                        final int[] merkleRoot = ISS.getMerkleRoot(mode, ISS.address(mode, ISS.digest(mode,
-                                Arrays.copyOf(ISS.normalizedBundle(trunkTransactionTrits),
-                                        ISS.NUMBER_OF_FRAGMENT_CHUNKS),
-                                signatureFragmentTrits)),
-                                transactionViewModel2.trits(), 0, index, NUMBER_OF_KEYS_IN_A_MILESTONE);
-                        if (testnet || (new Hash(merkleRoot)).equals(coordinator)) {
+                        // TODO: The coordinator hash merkle model need to change too
+                        if (testnet) { // || (new Hash(merkleRoot)).equals(coordinator)) {
                             new MilestoneViewModel(index, transactionViewModel.getHash()).store(tangle);
                             return VALID;
                         } else {
@@ -236,7 +239,9 @@ public class Milestone {
     }
 
     static int getIndex(TransactionViewModel transactionViewModel) {
-        return (int) Converter.longValue(transactionViewModel.trits(), TransactionViewModel.OBSOLETE_TAG_TRINARY_OFFSET, 15);
+        // TODO: Find a cleaner way such as a direct field on the object
+        ByteBuffer wrap = ByteBuffer.wrap(transactionViewModel.getObsoleteTagValue().bytes());
+        return wrap.getInt();
     }
 
     void shutDown() {

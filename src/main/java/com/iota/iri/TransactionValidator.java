@@ -84,14 +84,8 @@ public class TransactionValidator {
 
     public static void runValidation(TransactionViewModel transactionViewModel, final int minWeightMagnitude) {
         transactionViewModel.setMetadata();
-        transactionViewModel.setAttachmentData();
         if(hasInvalidTimestamp(transactionViewModel)) {
             throw new StaleTimestampException("Invalid transaction timestamp.");
-        }
-        for (int i = VALUE_TRINARY_OFFSET + VALUE_USABLE_TRINARY_SIZE; i < VALUE_TRINARY_OFFSET + VALUE_TRINARY_SIZE; i++) {
-            if (transactionViewModel.trits()[i] != 0) {
-                throw new RuntimeException("Invalid transaction value");
-            }
         }
 
         int weightMagnitude = transactionViewModel.weightMagnitude;
@@ -104,18 +98,13 @@ public class TransactionValidator {
         }
     }
 
-    public static TransactionViewModel validate(final int[] trits, int minWeightMagnitude) {
-        TransactionViewModel transactionViewModel = new TransactionViewModel(trits, Hash.calculate(trits, 0, trits.length, SpongeFactory.create(SpongeFactory.Mode.CURLP81)));
-        runValidation(transactionViewModel, minWeightMagnitude);
-        return transactionViewModel;
-    }
     public static TransactionViewModel validate(final byte[] bytes, int minWeightMagnitude) {
         return validate(bytes, minWeightMagnitude, SpongeFactory.create(SpongeFactory.Mode.CURLP81));
 
     }
 
     public static TransactionViewModel validate(final byte[] bytes, int minWeightMagnitude, Sponge curl) {
-        TransactionViewModel transactionViewModel = new TransactionViewModel(bytes, Hash.calculate(bytes, TransactionViewModel.TRINARY_SIZE, curl));
+        TransactionViewModel transactionViewModel = new TransactionViewModel(bytes, Hash.calculate(bytes, curl));
         runValidation(transactionViewModel, minWeightMagnitude);
         return transactionViewModel;
     }

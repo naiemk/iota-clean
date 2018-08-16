@@ -2,19 +2,19 @@ package com.iota.iri.model;
 
 import com.iota.iri.hash.Curl;
 import com.iota.iri.hash.Sponge;
-import com.iota.iri.hash.SpongeFactory;
 import com.iota.iri.storage.Indexable;
 import com.iota.iri.utils.Converter;
+import org.bouncycastle.jcajce.provider.digest.SHA3;
 
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 public class Hash implements Serializable, Indexable {
 
-    public static final int SIZE_IN_TRITS = 243;
-    public static final int SIZE_IN_BYTES = 49;
+   public static final int SIZE_IN_BYTES = 32;
 
-    public static final Hash NULL_HASH = new Hash(new int[Curl.HASH_LENGTH]);
+    public static final Hash NULL_HASH = new Hash(new byte[SIZE_IN_BYTES]);
 
     private byte[] bytes;
     private int[] trits;
@@ -32,54 +32,25 @@ public class Hash implements Serializable, Indexable {
         this(bytes, 0, SIZE_IN_BYTES);
     }
 
-    public Hash(final int[] trits, final int offset) {
-        this.trits = new int[SIZE_IN_TRITS];
-        System.arraycopy(trits, offset, this.trits, 0, SIZE_IN_TRITS);
-        //this(Converter.bytes(trits, offset, trits.length));
+    public Hash(final String hash) {
+        this(hash.getBytes(StandardCharsets.UTF_8));
     }
 
-    public Hash(final int[] trits) {
-        this(trits, 0);
-    }
-
-    public Hash(final String trytes) {
-        this.trits = new int[SIZE_IN_TRITS];
-        Converter.trits(trytes, this.trits, 0);
-    }
-
-    //
-    /*
     public static Hash calculate(byte[] bytes) {
-        return calculate(bytes, SIZE_IN_TRITS, new Curl());
-    }
-    */
-    public static Hash calculate(SpongeFactory.Mode mode, int[] trits) {
-        return calculate(trits, 0, trits.length, SpongeFactory.create(mode));
+        return calculateSHA3(bytes);
     }
 
-    public static Hash calculate(byte[] bytes, int tritsLength, final Sponge curl) {
-        int[] trits = new int[tritsLength];
-        Converter.getTrits(bytes, trits);
-        return calculate(trits, 0, tritsLength, curl);
-    }
-    public static Hash calculate(final int[] tritsToCalculate, int offset, int length, final Sponge curl) {
-        int[] hashTrits = new int[SIZE_IN_TRITS];
-        curl.reset();
-        curl.absorb(tritsToCalculate, offset, length);
-        curl.squeeze(hashTrits, 0, SIZE_IN_TRITS);
-        return new Hash(hashTrits);
+    public static Hash calculate(byte[] bytes, final Sponge curl) {
+        return calculate(bytes);
     }
 
-    public int trailingZeros() {
-        int index, zeros;
-        final int[] trits;
-        index = SIZE_IN_TRITS;
-        zeros = 0;
-        trits = trits();
-        while(index-- > 0 && trits[index] == 0) {
-            zeros++;
-        }
-        return zeros;
+    public static byte[] Sha3Digest(byte[] bytes) {
+        SHA3.DigestSHA3 digestSHA3 = new SHA3.Digest256();
+        return digestSHA3.digest(bytes);
+    }
+
+    private static Hash calculateSHA3(byte[] bytes) {
+        return new Hash(Sha3Digest(bytes));
     }
 
     public int[] trits() {
@@ -142,15 +113,18 @@ public class Hash implements Serializable, Indexable {
 
     @Override
     public int compareTo(Indexable indexable) {
-        Hash hash = new Hash(indexable.bytes());
-        if (this.equals(hash)) {
-            return 0;
+        int idx = 0;
+        for(byte b: indexable.bytes()) {
+            if (bytes.length == idx) {
+                return -1;
+            }
+            if (b != bytes[idx]) {
+                return Byte.compare(bytes[idx], b);
+            }
+            idx ++;
         }
-        long diff = Converter.longValue(hash.trits(), 0, SIZE_IN_TRITS) - Converter.longValue(trits(), 0, SIZE_IN_TRITS);
-        if (Math.abs(diff) > Integer.MAX_VALUE) {
-            return diff > 0L ? Integer.MAX_VALUE : Integer.MIN_VALUE + 1;
-        }
-        return (int) diff;
+
+        return 0;
     }
 }
 
