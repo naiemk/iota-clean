@@ -3,7 +3,6 @@ package com.iota.iri.service;
 import static io.undertow.Handlers.path;
 
 import java.io.*;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -21,7 +20,6 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -31,6 +29,7 @@ import com.iota.iri.controllers.*;
 import com.iota.iri.network.*;
 import com.iota.iri.service.dto.*;
 import org.apache.commons.io.IOUtils;
+import org.bouncycastle.util.encoders.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xnio.channels.StreamSinkChannel;
@@ -293,9 +292,12 @@ public class API {
                         return ErrorResponse.create(e.getLocalizedMessage());
                     }
                 }
-                case "getTrytes": {
+                case "getBytes": {
                     final List<String> hashes = getParameterAsList(request,"hashes", HASH_SIZE);
-                    return getTrytesStatement(hashes);
+                    return getBytesStatement(hashes);
+                }
+                case "getTrytes": {
+                    throw new RuntimeException("getTrytes is obsolete! Use getBytes");
                 }
 
                 case "interruptAttachingToTangle": {
@@ -538,18 +540,19 @@ public class API {
         return RemoveNeighborsResponse.create(numberOfRemovedNeighbors);
     }
 
-    private synchronized AbstractResponse getTrytesStatement(List<String> hashes) throws Exception {
+    private synchronized AbstractResponse getBytesStatement(List<String> hashes) throws Exception {
         final List<String> elements = new LinkedList<>();
         for (final String hash : hashes) {
             final TransactionViewModel transactionViewModel = TransactionViewModel.fromHash(instance.tangle, new Hash(hash));
             if (transactionViewModel != null) {
-                elements.add(Converter.trytes(transactionViewModel.trits()));
+                // TODO: User proper serialization for protobuf
+                elements.add(new String(Base64.encode(transactionViewModel.getBytes()), StandardCharsets.UTF_8));
             }
         }
         if (elements.size() > maxGetTrytes){
             return ErrorResponse.create(overMaxErrorMessage);
         }
-        return GetTrytesResponse.create(elements);
+        return GetBytesResponse.create(elements);
     }
 
     private static int counter_getTxToApprove = 0;
@@ -625,13 +628,11 @@ public class API {
         return GetTipsResponse.create(instance.tipsViewModel.getTips().stream().map(Hash::toString).collect(Collectors.toList()));
     }
 
-    public void storeTransactionStatement(final List<String> trys) throws Exception {
+    public void storeTransactionStatement(final List<String> byteStrs) throws Exception {
         final List<TransactionViewModel> elements = new LinkedList<>();
-        int[] txTrits = Converter.allocateTritsForTrytes(TRYTES_SIZE);
-        for (final String trytes : trys) {
-            //validate all trytes
-            Converter.trits(trytes, txTrits, 0);
-            final TransactionViewModel transactionViewModel = instance.transactionValidator.validate(txTrits,
+        for (final String byteStr : byteStrs) {
+            final TransactionViewModel transactionViewModel = instance.transactionValidator.validate(
+                    Converter.txBytes(byteStr),
                     instance.transactionValidator.getMinWeightMagnitude());
             elements.add(transactionViewModel);
         }
@@ -839,13 +840,12 @@ public class API {
         return result;
     }
 
-    public void broadcastTransactionStatement(final List<String> trytes2) {
+    public void broadcastTransactionStatement(final List<String> byteStrs) {
         final List<TransactionViewModel> elements = new LinkedList<>();
         int[] txTrits = Converter.allocateTritsForTrytes(TRYTES_SIZE);
-        for (final String tryte : trytes2) {
-            //validate all trytes
-            Converter.trits(tryte, txTrits, 0);
-            final TransactionViewModel transactionViewModel = instance.transactionValidator.validate(txTrits, instance.transactionValidator.getMinWeightMagnitude());
+        for (final String byteStr : byteStrs) {
+            final TransactionViewModel transactionViewModel = instance.transactionValidator
+                    .validate(Converter.txBytes(byteStr), instance.transactionValidator.getMinWeightMagnitude());
             elements.add(transactionViewModel);
         }
         for (final TransactionViewModel transactionViewModel : elements) {
@@ -921,48 +921,36 @@ public class API {
     }
 
     public synchronized List<String> attachToTangleStatement(final Hash trunkTransaction, final Hash branchTransaction,
-                                                                  final int minWeightMagnitude, final List<String> trytes) {
+                                                          final int minWeightMagnitude, final List<String> byteStrs) {
         final List<TransactionViewModel> transactionViewModels = new LinkedList<>();
 
         Hash prevTransaction = null;
         pearlDiver = new PearlDiver();
 
-        int[] transactionTrits = Converter.allocateTritsForTrytes(TRYTES_SIZE);
-
-        for (final String tryte : trytes) {
+        for (final String byteStr : byteStrs) {
             long startTime = System.nanoTime();
             long timestamp = System.currentTimeMillis();
             try {
-                Converter.trits(tryte, transactionTrits, 0);
-                //branch and trunk
-                System.arraycopy((prevTransaction == null ? trunkTransaction : prevTransaction).trits(), 0,
-                        transactionTrits, TransactionViewModel.TRUNK_TRANSACTION_TRINARY_OFFSET,
-                        TransactionViewModel.TRUNK_TRANSACTION_TRINARY_SIZE);
-                System.arraycopy((prevTransaction == null ? branchTransaction : trunkTransaction).trits(), 0,
-                        transactionTrits, TransactionViewModel.BRANCH_TRANSACTION_TRINARY_OFFSET,
-                        TransactionViewModel.BRANCH_TRANSACTION_TRINARY_SIZE);
-
-                //attachment fields: tag and timestamps
-                //tag - copy the obsolete tag to the attachment tag field only if tag isn't set.
-                if(Arrays.stream(transactionTrits, TransactionViewModel.TAG_TRINARY_OFFSET, TransactionViewModel.TAG_TRINARY_OFFSET + TransactionViewModel.TAG_TRINARY_SIZE).allMatch(s -> s == 0)) {
-                    System.arraycopy(transactionTrits, TransactionViewModel.OBSOLETE_TAG_TRINARY_OFFSET,
-                        transactionTrits, TransactionViewModel.TAG_TRINARY_OFFSET,
-                        TransactionViewModel.TAG_TRINARY_SIZE);
+                // Clone the transaction, set the trunk and branch
+                byte[] tBytes = Converter.txBytes(byteStr);
+                TransactionViewModel transaction = new TransactionViewModel(tBytes, new Hash(tBytes));
+                transaction.setTrunkTransactionHash(prevTransaction == null ? trunkTransaction : prevTransaction);
+                transaction.setBranchTransactionHash(prevTransaction == null ? branchTransaction : trunkTransaction);
+                if (Hash.NULL_HASH.equals(transaction.getTagValue())) {
+                    transaction.setObsoleteTagValue(transaction.getTagValue());
                 }
 
-                Converter.copyTrits(timestamp,transactionTrits,TransactionViewModel.ATTACHMENT_TIMESTAMP_TRINARY_OFFSET,
-                        TransactionViewModel.ATTACHMENT_TIMESTAMP_TRINARY_SIZE);
-                Converter.copyTrits(0,transactionTrits,TransactionViewModel.ATTACHMENT_TIMESTAMP_LOWER_BOUND_TRINARY_OFFSET,
-                        TransactionViewModel.ATTACHMENT_TIMESTAMP_LOWER_BOUND_TRINARY_SIZE);
-                Converter.copyTrits(MAX_TIMESTAMP_VALUE,transactionTrits,TransactionViewModel.ATTACHMENT_TIMESTAMP_UPPER_BOUND_TRINARY_OFFSET,
-                        TransactionViewModel.ATTACHMENT_TIMESTAMP_UPPER_BOUND_TRINARY_SIZE);
+                transaction.setTimestamp(timestamp);
+                transaction.setTimestampLowerBound(0);
+                transaction.setTimestampUpperBound(MAX_TIMESTAMP_VALUE);
 
-                if (!pearlDiver.search(transactionTrits, minWeightMagnitude, 0)) {
-                    transactionViewModels.clear();
-                    break;
-                }
+                // TODO: PoW is disabled. Bring it back
+//                if (!pearlDiver.search(transactionTrits, minWeightMagnitude, 0)) {
+//                    transactionViewModels.clear();
+//                    break;
+//                }
                 //validate PoW - throws exception if invalid
-                final TransactionViewModel transactionViewModel = instance.transactionValidator.validate(transactionTrits, instance.transactionValidator.getMinWeightMagnitude());
+                final TransactionViewModel transactionViewModel = instance.transactionValidator.validate(tBytes, instance.transactionValidator.getMinWeightMagnitude());
 
                 transactionViewModels.add(transactionViewModel);
                 prevTransaction = transactionViewModel.getHash();
@@ -982,7 +970,7 @@ public class API {
 
         final List<String> elements = new LinkedList<>();
         for (int i = transactionViewModels.size(); i-- > 0; ) {
-            elements.add(Converter.trytes(transactionViewModels.get(i).trits()));
+            elements.add(Converter.txStr(transactionViewModels.get(i).getBytes()));
         }
         return elements;
     }

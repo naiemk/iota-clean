@@ -1,7 +1,9 @@
 package com.iota.iri.utils;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 
 public class Converter {
 
@@ -249,4 +251,13 @@ public class Converter {
         trits(trytes, trits, 0);
         return trits;
   }
+
+    public static byte[] txBytes(String byteStr) {
+        return Base64.getDecoder().decode(byteStr.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static String txStr(byte[] bytes) {
+        return new String(Base64.getEncoder().encode(bytes), (StandardCharsets.UTF_8));
+    }
 }
+

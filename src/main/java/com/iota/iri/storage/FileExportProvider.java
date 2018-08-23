@@ -1,7 +1,5 @@
 package com.iota.iri.storage;
 
-import com.iota.iri.controllers.TransactionViewModel;
-import com.iota.iri.model.Hash;
 import com.iota.iri.model.Transaction;
 import com.iota.iri.utils.Converter;
 import com.iota.iri.utils.Pair;
@@ -14,10 +12,8 @@ import java.io.UnsupportedEncodingException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
-import static com.iota.iri.controllers.TransactionViewModel.TRINARY_SIZE;
 
 /**
  * Created by paul on 4/18/17.
@@ -61,7 +57,7 @@ public class FileExportProvider implements PersistenceProvider {
                     Path path = Paths.get("export", String.valueOf(getFileNumber()) + ".tx");
                     writer = new PrintWriter(path.toString(), "UTF-8");
                     writer.println(index.toString());
-                    writer.println(Converter.trytes(trits(transaction)));
+                    writer.println(Converter.txStr(transaction.bytes));
                     writer.println(transaction.sender);
                     if(item.equals("height")) {
                         writer.println("Height: " + String.valueOf(transaction.height));
@@ -170,12 +166,5 @@ public class FileExportProvider implements PersistenceProvider {
             lastFileNumber = now;
         }
         return now;
-    }
-    int[] trits(Transaction transaction) {
-        int[] trits = new int[TRINARY_SIZE];
-        if(transaction.bytes != null) {
-            Converter.getTrits(transaction.bytes, trits);
-        }
-        return trits;
     }
 }

@@ -13,6 +13,7 @@ import java.util.*;
 public class TransactionViewModel {
 
     private final com.iota.iri.model.Transaction transaction;
+    private final com.iota.iri.model.TansactionMetadata transactionMetadata;
 
     public static final long SUPPLY = 2779530283277761L; // = (3^33 - 1) / 2
 
